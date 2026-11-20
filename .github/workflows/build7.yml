@@ -4,9 +4,7 @@ name: Build DaemonDisabler DEB
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 jobs:
   build:
@@ -18,7 +16,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew update
           brew install make ldid dpkg
 
       - name: Install Theos
@@ -28,19 +25,35 @@ jobs:
 
       - name: Install iOS SDK
         run: |
-          git clone https://github.com/theos/sdks.git /tmp/sdks
+          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
           mkdir -p "$HOME/theos/sdks"
           cp -R /tmp/sdks/iPhoneOS*.sdk "$HOME/theos/sdks/"
 
-      - name: Build package
+      - name: Locate Makefile
         run: |
-          export PATH="/opt/homebrew/bin:$PATH"
-          make clean || true
-          make package FINALPACKAGE=1 ARCHS="arm64 arm64e"
+          FILE=$(find . -name Makefile -not -path './.git/*' -print -quit)
+
+          if [ -z "$FILE" ]; then
+            echo "::error::No Makefile found in repository"
+            find . -maxdepth 3 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$FILE")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found: $FILE"
+
+      - name: Build DEB
+        run: |
+          cd "$PROJECT_DIR"
+          export PATH="/opt/homebrew/opt/make/libexec/gnubin:/opt/homebrew/bin:$PATH"
+
+          gmake clean || true
+          gmake package FINALPACKAGE=1 ARCHS="arm64 arm64e"
 
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: DaemonDisabler-DEB
-          path: packages/*.deb
+          path: "**/packages/*.deb"
           if-no-files-found: error
